@@ -2,7 +2,7 @@
 
 Ce document présente l'analyse technique et financière pour la mise en place d'une infrastructure de virtualisation dédiée aux cours DevOps et Cloud.
 
-## 1. Analyse du Dimensionnement (Workload)
+## Analyse du Dimensionnement (Workload)
 
 L'objectif est de supporter **40 étudiants** simultanément (2 classes de 20). Chaque étudiant dispose de 4 instances Debian, soit un total de **160 machines virtuelles (VM)**.
 
@@ -15,6 +15,11 @@ L'objectif est de supporter **40 étudiants** simultanément (2 classes de 20). 
 | **VM 4** | Apache/PHP/MariaDB (Srv B) | 1 | 2 Gio | 20 Go |
 | **Total/Étudiant** | - | **4 vCPU** | **5.5 Gio** | **65 Go** |
 
+### Justification du Stockage
+* **Bastion SSH (10 Go)** : Une Debian minimale occupe ~2 Go. 10 Go permettent de stocker confortablement les journaux système et les outils d'administration sans risque de saturation rapide.
+* **Nginx Load Balancer (15 Go)** : Dimensionné pour accueillir les logs d'accès HTTP/HTTPS qui peuvent être volumineux et un espace tampon pour le cache des fichiers statiques.
+* **Apache/PHP/MariaDB (20 Go)** : Ces instances hébergent à la fois le serveur web, le code applicatif et les données (SGBD). C'est le volume critique pour permettre aux étudiants d'importer des bases de données de taille réaliste.
+
 ### Total Infrastructure Cible
 * **vCPU** : 160 cœurs (évolutif via overcommit).
 * **RAM** : 220 Gio (net).
@@ -22,7 +27,7 @@ L'objectif est de supporter **40 étudiants** simultanément (2 classes de 20). 
 
 ---
 
-## 2. Option 1 : Cluster On-Premise (Proxmox VE)
+## Cluster On-Premise (Proxmox VE)
 
 Installation de machines physiques dans les locaux de l'école. Pour garantir la disponibilité, nous préconisons un cluster de **3 nœuds**.
 
@@ -43,7 +48,7 @@ Installation de machines physiques dans les locaux de l'école. Pour garantir la
 
 ---
 
-## 3. Option 2 : Serveurs Dédiés OVHcloud (Bare Metal)
+## Serveurs Dédiés OVHcloud (Bare Metal)
 
 Location de serveurs physiques avec réseau privé (vRack) pour interconnecter les nœuds Proxmox.
 
@@ -63,7 +68,7 @@ Location de serveurs physiques avec réseau privé (vRack) pour interconnecter l
 
 ---
 
-## 4. Alternatives Cloud Open Source
+## Alternatives Cloud Open Source
 
 En dehors de Proxmox et d'OpenStack (souvent jugé trop complexe pour une petite structure), voici trois alternatives pertinentes :
 
@@ -81,6 +86,6 @@ En dehors de Proxmox et d'OpenStack (souvent jugé trop complexe pour une petite
 
 ---
 
-## 5. Recommandation Finale
+## Recommandation Finale
 
 Pour l'école Heptagone, le choix de **Proxmox sur serveurs On-Premise** est recommandé si l'école dispose d'une salle serveur climatisée et d'une bonne connexion fibre. Cela permet aux étudiants de manipuler physiquement la couche réseau. Si la maintenance matérielle est une contrainte, la solution **OVHcloud** est la plus sécurisante.
