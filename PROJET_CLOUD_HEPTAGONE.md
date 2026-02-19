@@ -1,20 +1,19 @@
-# Étude de Cas : Infrastructure Cloud "Heptagone"
+# Étude de Faisabilité : Cloud IaaS Heptagone
 
-Ce document détaille la stratégie de déploiement d'un cloud privé pour l'école Heptagone, dimensionné pour **40 étudiants** (160 instances Debian au total).
+Ce document présente l'analyse technique et financière pour la mise en place d'une infrastructure de virtualisation dédiée aux cours DevOps et Cloud.
 
----
+## Analyse du Dimensionnement (Workload)
 
-## 1. Analyse du besoin (Workload)
+L'objectif est de supporter **40 étudiants** simultanément (2 classes de 20). Chaque étudiant dispose de 4 instances Debian, soit un total de **160 machines virtuelles (VM)**.
 
-Chaque étudiant doit manipuler une architecture multi-tiers complète pour apprendre les concepts de segmentation et de haute disponibilité.
-
-| Machine | Rôle | Ressources | Justification |
-| :--- | :--- | :--- | :--- |
-| **Bastion** | Passerelle SSH | 1 vCPU / 512 Mo | Sécurise l'accès au reste de l'infrastructure. |
-| **Proxy (Nginx)** | Répartiteur | 1 vCPU / 1 Go | Apprentissage du Load Balancing et du SSL. |
-| **Web (x2)** | Serveurs App | 2 vCPU / 4 Go | Simulation de redondance (Apache/PHP/MariaDB). |
-
-**Volume total à supporter :** 160 vCPU / 220 Go RAM / ~3 To de stockage.
+### Détail des ressources par étudiant
+| Instance | Rôle | vCPU | RAM | Stockage (estimé) |
+| :--- | :--- | :--- | :--- | :--- |
+| **VM 1** | Bastion SSH | 1 | 512 Mio | 10 Go |
+| **VM 2** | Nginx (Load Balancer) | 1 | 1 Gio | 15 Go |
+| **VM 3** | Apache/PHP/MariaDB (Srv A) | 1 | 2 Gio | 20 Go |
+| **VM 4** | Apache/PHP/MariaDB (Srv B) | 1 | 2 Gio | 20 Go |
+| **Total/Étudiant** | - | **4 vCPU** | **5.5 Gio** | **65 Go** |
 
 ### Justification du Stockage
 * **Bastion SSH (10 Go)** : Une Debian minimale occupe ~2 Go. 10 Go permettent de stocker confortablement les journaux système et les outils d'administration sans risque de saturation rapide.
@@ -28,49 +27,65 @@ Chaque étudiant doit manipuler une architecture multi-tiers complète pour appr
 
 ---
 
-## 2. Option A : Le Cloud "On-Premise" (Proxmox VE)
+## Cluster On-Premise (Proxmox VE)
 
-L'idée est d'installer un cluster physique dans la salle serveur de l'école.
+Installation de machines physiques dans les locaux de l'école. Pour garantir la disponibilité, nous préconisons un cluster de **3 nœuds**.
 
+### Configuration Matérielle (par nœud)
+* **Processeur** : 1x AMD EPYC 7313P (16 Cores / 32 Threads).
+* **Mémoire** : 128 Gio DDR4 ECC (Total cluster : 384 Gio).
+    * *Note : Cela permet de perdre 1 nœud sans interrompre le service (Haute Disponibilité).*
+* **Stockage** : 2x 1.92 To NVMe (ZFS Mirror) pour l'OS et les VM.
+* **Réseau** : Double interface 10GbE pour le stockage distribué (Ceph) et la migration à chaud.
 
-
-### Configuration préconisée
-* **Matériel :** 3 serveurs (ex: Dell R640 reconditionnés) avec processeurs AMD EPYC ou Intel Xeon.
-* **Mémoire :** 128 Go de RAM par serveur (384 Go au total).
-* **Coût estimé (Investissement) :** **~9 700 € HT** (Serveurs, Switchs 10GbE, Onduleur).
-
-### Pourquoi ce choix ?
-* **Pédagogie concrète :** Les étudiants peuvent voir les serveurs, comprendre le câblage et la gestion de la chaleur/énergie.
-* **Haute Disponibilité ($N+1$) :** Avec 3 nœuds, on peut perdre un serveur entier sans que les TP des étudiants ne s'arrêtent.
-* **Indépendance :** Aucun coût mensuel récurrent une fois le matériel acheté.
-
----
-
-## 3. Option B : Le Cloud "Déporté" (OVHcloud Bare Metal)
-
-Utilisation de serveurs dédiés loués et interconnectés via un réseau privé virtuel (vRack).
-
-* **Configuration :** 3 serveurs de la gamme **Advance-2**.
-* **Coût estimé (Fonctionnement) :** **~640 € HT / mois**.
-
-### Pourquoi ce choix ?
-* **Zéro maintenance :** L'école ne gère pas les pannes de disques ou l'électricité. C'est idéal si l'équipe technique est réduite.
-* **Connectivité :** Les étudiants bénéficient d'une bande passante internet professionnelle (1 Gbps+), cruciale pour télécharger des images Docker ou des paquets.
+### Estimation des Coûts (CAPEX)
+| Poste | Détails | Prix HT (estimé) |
+| :--- | :--- | :--- |
+| Serveurs (x3) | Reconditionnés récents (Dell R640 ou équivalent) | 7 500 € |
+| Switchs & Câblage | 1x Switch 10GbE SFP+ + 1x Switch GbE | 1 000 € |
+| Onduleur (UPS) | 3kVA rackable | 1 200 € |
+| **TOTAL** | **Investissement Initial** | **9 700 €** |
 
 ---
 
-## 4. Alternatives Open Source
+## Serveurs Dédiés OVHcloud (Bare Metal)
 
-Si Proxmox n'est pas retenu, d'autres solutions sont pertinentes pour l'école :
+Location de serveurs physiques avec réseau privé (vRack) pour interconnecter les nœuds Proxmox.
 
-1.  **XCP-ng :** La solution la plus proche des standards industriels (VMware/Citrix). Elle est extrêmement robuste pour la gestion de flottes de VM.
-2.  **Harvester :** L'option "moderne". Basé sur Kubernetes, il permet de gérer des VM et des conteneurs sur la même interface. Parfait pour un cursus 100% DevOps.
-3.  **OpenNebula :** Très utilisé dans la recherche, il offre un portail "Self-Service" très simple pour les étudiants.
+### Modèle retenu : Advance-2 (x3)
+* **CPU** : Intel Xeon-E 2388G (8c/16t).
+* **RAM** : 128 Gio.
+* **Disques** : 2x 960 Go SSD.
+
+### Estimation des Coûts (OPEX)
+| Poste | Mensualité HT | Annuité HT |
+| :--- | :--- | :--- |
+| Location 3 serveurs | ~540 € | 6 480 € |
+| Options (IP Failover / vRack) | ~100 € | 1 200 € |
+| **TOTAL** | **~640 € / mois** | **7 680 € / an** |
+
+> **Comparaison rapide** : Le point d'équilibre (ROI) de l'option On-Premise se situe à environ **15 mois** d'utilisation par rapport à la location chez OVH.
 
 ---
 
-## 5. Synthèse et Préconisation
+## Alternatives Cloud Open Source
 
-**Le choix Heptagone :** L'option **On-Premise (Proxmox)** est la plus valorisante pédagogiquement. Elle permet d'amortir les coûts en moins de 15 mois et offre une liberté totale sur la configuration réseau. 
+En dehors de Proxmox et d'OpenStack (souvent jugé trop complexe pour une petite structure), voici trois alternatives pertinentes :
 
-Cependant, si la salle serveur de l'école n'est pas climatisée ou sécurisée, l'option **OVHcloud** est préférable pour garantir la continuité des cours.
+1.  **XCP-ng (Xen Cloud Platform)** :
+    * *Description* : Basé sur l'hyperviseur Xen. Couplé à **Xen Orchestra**, il offre une gestion web très complète.
+    * *Pourquoi Heptagone ?* Très stable, sauvegarde native performante, et moins "bricolage" que Proxmox pour certains administrateurs.
+
+2.  **OpenNebula** :
+    * *Description* : Une solution de Cloud simple et légère qui gère KVM, LXC et même VMware.
+    * *Pourquoi Heptagone ?* Plus proche d'une expérience "AWS-like" pour les étudiants, avec un portail utilisateur simplifié.
+
+3.  **Harvester (by SUSE/Rancher)** :
+    * *Description* : Infrastructure hyper-convergée (HCI) moderne basée sur Kubernetes et KubeVirt.
+    * *Pourquoi Heptagone ?* Permet de gérer des VM et des conteneurs sur la même couche. Idéal pour un cursus 100% DevOps moderne.
+
+---
+
+## Recommandation Finale
+
+Pour l'école Heptagone, le choix de **Proxmox sur serveurs On-Premise** est recommandé si l'école dispose d'une salle serveur climatisée et d'une bonne connexion fibre. Cela permet aux étudiants de manipuler physiquement la couche réseau. Si la maintenance matérielle est une contrainte, la solution **OVHcloud** est la plus sécurisante.
